@@ -1,0 +1,27 @@
+We need to update this code in a few ways:
+
+A. First script: called 'update_master.py' - this ingests a specified list (can start with either mgb_* or vumc_*) and saves a parsed master list.... either to initialize, or to update.
+
+1. Lists are of the form mother_MRN,mother_last,mother_first,mother_phone,offspring_MRN,offspring_last,offspring_first,offspring_sex,offspring_DOB,model_score, model_pctile
+2. Check to see if that master-list file has been previously parsed (ie, does a 'parsed_mgb_master_list.csv' file already exist?)
+-- if so, stop and ask if we want to update the list --- then when we ingest the list, we will only add the people where their offspring_MRN value was not previously present. We will remove any offspring_MRN in the existing list if they are not in the new list, IF and ONLY IF those offspring have not been invited to participate. (ie, leave people previously invited whether or not they participated)
+-- if not, parse that master list as we currently do
+3. There should be a column for 'date_added' which is the current date (for new entries). If updated (as in the last step), we do not change the date_added for existing entries.
+4. Do the same ingestion for a vumc_master_list.csv file, as in steps 1-3
+5. Script should output previous number of offspring, previous number of mothers, updated offspring and updated mothers, number added and number removed. (Note a given mother_MRN can be associated with multiple offspring_MRN).
+6. IF this is the first time the script is run, add a START_DATE constant to the file with constants with the current date. And always add a LAST_UPDATE constant to the file with current date.
+7. Always save backups of ingested files, prior version, and new version in the backups folder - with date appended.
+
+B. Second script: called 'update_recruitment.py' - takes a total number of people to invite (between the 2 sites, MGB and VUMC) with the --visits {n} flag and outputs a csv file with necessary invite info (the input list variables, omitting model_score and model_pctile, adding 'MGB' or 'VUMC' depending on which list they come from, and the date added to recruitment list - this will be the current date for new people and the prior date if one already existed). 
+1. This should always take a '--prior_list {file}' that has the previous recruitment list that was being edited. If that is absent, should confirm 'There is no prior list provided, do you want to proceed? [Y/N]' -- if no, just exit. If yes, do not need to parse prior list. If there /is/ a prior list, the status for the parsed_mgb_master_list.csv and parsed_vumc_master_list.csv files will be udpated for those individuals. 
+2. Anyone who has been invited will be included in the output list automatically (and counted against the total) UNLESS they have been marked as completed, in which case they will not be included in the output list and not counted. 
+3. The rule for selecting new people to recruit is that 2/3 always come from MGB, 1/3 from VUMC. These are constants in the master constant file and can be changed.
+4. Within each site, the proportion in each risk group is specified in the constant file
+5. We dynamically calculate the yield to date (using the parsed master lists) based on previous invitations and consents for each stratum. We want to hit our total per stratum target so we will ratchet down a given group if it is overperforming and up a group if it is underperforming, based on previous yield.
+6. The new recruitment list is always output with the holdovers at the top; the remaining individuals are randomly ordered on the list.
+7. For the lowest group, we want it to be evenly distributed by risk deciles at each site (0-10, 11-20, 21-30, 31-40, 41-50) - the other distributions are specified in constants.
+8. The script is expected to be run monthly. 
+9. Always save backup of output file with date appended.
+10. In addition to outputting a new csv file, be sure to output a log to console (and saved to log directory) that describes how many people added in each stratum, plus current n's and yields from master files.
+
+C. Third script: called 'consort.py' - outputs detailed stats based on log files of yields, invites, n's etc in each stratum over time, in table form.

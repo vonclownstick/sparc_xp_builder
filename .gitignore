@@ -1,0 +1,6 @@
+study_data/outputs/*.csv
+study_data/backups/
+study_data/logs/
+*.csv
+!mgb_master_list.csv
+!vumc_master_list.csv

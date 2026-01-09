@@ -1,0 +1,9 @@
+mother_MRN,mother_last,mother_first,mother_phone,offspring_MRN,offspring_last,offspring_first,offspring_sex,offspring_DOB,model_score,model_pctile
+MOM1,Smith,Jane,555-0101,CHILD1,Smith,Alice,F,2021-02-01,0.99,99
+MOM2,Jones,Mary,555-0102,CHILD2,Jones,Bob,M,2021-06-01,0.92,92
+MOM3,Brown,Lucy,555-0103,CHILD3,Brown,Charlie,M,2021-05-15,0.85,85
+MOM4,White,Emma,555-0104,CHILD4,White,David,M,2021-12-10,0.75,75
+MOM5,Green,Sarah,555-0105,CHILD5,Green,Eve,F,2021-08-20,0.55,55
+MOM6,Black,Anna,555-0106,CHILD6,Black,Frank,M,2021-09-01,0.45,45
+MOM7,Grey,Kate,555-0107,CHILD7,Grey,George,M,2021-10-01,0.15,15
+MOM8,Gold,Rose,555-0108,CHILD8,Gold,Harry,M,2021-01-10,0.05,5
