@@ -69,16 +69,24 @@ def main():
             with open(args.prior_list, 'r') as f:
                 prior_rows = list(csv.DictReader(f))
             
-            # Create maps for quick lookup
-            prior_map = {r['offspring_MRN']: r['status'] for r in prior_rows}
+            # Create maps for quick lookup of updates
+            # We update status, letter1_date, letter2_date
+            prior_map = {r['offspring_MRN']: r for r in prior_rows}
             
-            # Update master lists
-            for r in mgb_rows:
-                if r['offspring_MRN'] in prior_map:
-                    r['status'] = prior_map[r['offspring_MRN']]
-            for r in vumc_rows:
-                if r['offspring_MRN'] in prior_map:
-                    r['status'] = prior_map[r['offspring_MRN']]
+            def update_rows(rows, p_map):
+                for r in rows:
+                    mrn = r['offspring_MRN']
+                    if mrn in p_map:
+                        p_row = p_map[mrn]
+                        if 'status' in p_row and p_row['status']:
+                            r['status'] = p_row['status']
+                        if 'letter1_date' in p_row:
+                            r['letter1_date'] = p_row['letter1_date']
+                        if 'letter2_date' in p_row:
+                            r['letter2_date'] = p_row['letter2_date']
+
+            update_rows(mgb_rows, prior_map)
+            update_rows(vumc_rows, prior_map)
             
             # Save updated master lists
             save_csv(mgb_rows, list(mgb_rows[0].keys()), mgb_path)
@@ -88,16 +96,17 @@ def main():
             return
 
     # NOTE: We do NOT carry over holdovers. 
-    # The new list is purely fresh invites to meet the target capacity.
-    # Previously invited people are excluded because their status is != 'Not Invited'.
-    
     total_needed = args.visits
     print(f"Total target (Fresh Invites): {total_needed}")
 
-    # Calculate Yields and Stratum Distribution for New Invites
+    # Determine site split (MGB vs VUMC) with exact rounding
+    mgb_ratio = C.get('MGB_RATIO', 0.6667)
+    mgb_target = int(total_needed * mgb_ratio + 0.5) # Round nearest
+    vumc_target = total_needed - mgb_target
+
     site_configs = [
-        {'site': 'MGB', 'rows': mgb_rows, 'ratio': C.get('MGB_RATIO', 0.6667)},
-        {'site': 'VUMC', 'rows': vumc_rows, 'ratio': C.get('VUMC_RATIO', 0.3333)}
+        {'site': 'MGB', 'rows': mgb_rows, 'target': mgb_target},
+        {'site': 'VUMC', 'rows': vumc_rows, 'target': vumc_target}
     ]
 
     new_selections = []
@@ -110,9 +119,8 @@ def main():
     for config in site_configs:
         site = config['site']
         rows = config['rows']
-        site_ratio = config['ratio']
+        site_new_needed = config['target']
         
-        site_new_needed = int(total_needed * site_ratio)
         log_messages.append(f"\nSite: {site} (Target New: {site_new_needed})")
         
         # Calculate yield per stratum
@@ -123,22 +131,38 @@ def main():
         total_adj_w = sum(adjusted_weights.values())
         normalized_weights = {s: adjusted_weights[s] / total_adj_w for s in strata}
         
+        # Largest Remainder Method for Allocation
+        float_targets = {s: site_new_needed * normalized_weights[s] for s in strata}
+        floor_targets = {s: int(v) for s, v in float_targets.items()}
+        remainder = site_new_needed - sum(floor_targets.values())
+        
+        # Sort by fractional part descending
+        fractional_parts = {s: v - int(v) for s, v in float_targets.items()}
+        sorted_strata = sorted(fractional_parts.keys(), key=lambda k: fractional_parts[k], reverse=True)
+        
+        # Distribute remainder
+        for i in range(remainder):
+            floor_targets[sorted_strata[i]] += 1
+            
+        # Select participants
         for s in strata:
-            s_new_needed = int(site_new_needed * normalized_weights[s])
-            log_messages.append(f"  {s}: Yield={yields[s]:.2f}, Target Invites={s_new_needed}")
+            s_target = floor_targets[s]
+            log_messages.append(f"  {s}: Yield={yields[s]:.2f}, Target Invites={s_target}")
             
             eligible_rows = [r for r in rows if r['stratum'] == s and r['status'] == 'Not Invited' and r['eligible'] == '1']
             
             selected = []
-            if len(eligible_rows) <= s_new_needed:
+            if len(eligible_rows) <= s_target:
                 selected = eligible_rows
             else:
-                selected = random.sample(eligible_rows, s_new_needed)
+                selected = random.sample(eligible_rows, s_target)
             
             for r in selected:
                 r['status'] = 'Pending'
                 r['last_contact_date'] = datetime.now().strftime('%Y-%m-%d')
                 r['date_added_to_recruitment'] = datetime.now().strftime('%Y-%m-%d')
+                r['letter1_date'] = '' # Initialize blank
+                r['letter2_date'] = '' # Initialize blank
                 new_selections.append(r)
             
             log_messages.append(f"    Added: {len(selected)}")
@@ -148,12 +172,14 @@ def main():
     save_csv(vumc_rows, list(vumc_rows[0].keys()), vumc_path)
 
     random.shuffle(new_selections)
-    final_list = new_selections # No holdovers
+    final_list = new_selections 
 
     # Output CSV
     if final_list:
         fieldnames = [f for f in final_list[0].keys() if f not in ['model_score', 'model_pctile']]
-        if 'date_added_to_recruitment' not in fieldnames: fieldnames.append('date_added_to_recruitment')
+        # Ensure new columns are in output
+        for f in ['date_added_to_recruitment', 'letter1_date', 'letter2_date']:
+            if f not in fieldnames: fieldnames.append(f)
         
         today_ts = datetime.now().strftime('%Y%m%d')
         output_path = os.path.join(output_dir, f"recruitment_{today_ts}.csv")

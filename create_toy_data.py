@@ -1,33 +1,46 @@
 import csv
 import os
+import random
 
 def create_mgb_toy():
-    data = [
-        ['mother_MRN','mother_last','mother_first','mother_phone','offspring_MRN','offspring_last','offspring_first','offspring_sex','offspring_DOB','model_score','model_pctile'],
-        ['MOM1','Smith','Jane','555-0101','CHILD1','Smith','Alice','F','2021-02-01','0.99','99'], # S1
-        ['MOM2','Jones','Mary','555-0102','CHILD2','Jones','Bob','M','2021-06-01','0.92','92'], # S2
-        ['MOM3','Brown','Lucy','555-0103','CHILD3','Brown','Charlie','M','2021-05-15','0.85','85'], # S3
-        ['MOM4','White','Emma','555-0104','CHILD4','White','David','M','2021-12-10','0.75','75'], # S4 (was 75)
-        ['MOM5','Green','Sarah','555-0105','CHILD5','Green','Eve','F','2021-08-20','0.55','55'], # S4 (was 65)
-        ['MOM6','Black','Anna','555-0106','CHILD6','Black','Frank','M','2021-09-01','0.45','45'], # S5
-        ['MOM7','Grey','Kate','555-0107','CHILD7','Grey','George','M','2021-10-01','0.15','15'], # S5
-        ['MOM8','Gold','Rose','555-0108','CHILD8','Gold','Harry','M','2021-01-10','0.05','5'], # S6
-    ]
+    data = [['mother_MRN','mother_last','mother_first','mother_phone','offspring_MRN','offspring_last','offspring_first','offspring_sex','offspring_DOB','model_score','model_pctile']]
+    
+    # Generate 100 candidates distributed across strata
+    for i in range(100):
+        pctile = random.uniform(0, 100)
+        stratum = 'S6'
+        if pctile > 95: stratum = 'S1'
+        elif pctile > 90: stratum = 'S2'
+        elif pctile > 80: stratum = 'S3'
+        elif pctile > 50: stratum = 'S4'
+        elif pctile > 10: stratum = 'S5'
+        
+        data.append([
+            f'MOM_M{i}', 'Smith', 'Jane', '555-0101', 
+            f'CHILD_M{i}', 'Smith', 'Alice', 'F', 
+            '2021-02-01', str(pctile/100), str(pctile)
+        ])
+        
     with open('mgb_master_list.csv', 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(data)
 
 def create_vumc_toy():
-    data = [
-        ['mother_MRN','mother_last','mother_first','mother_phone','offspring_MRN','offspring_last','offspring_first','offspring_sex','offspring_DOB','model_score','model_pctile'],
-        ['MOM_V1','Taylor','Rose','555-0201','CHILD_V1','Taylor','Sam','M','2021-02-02','0.96','96'], # S1
-        ['MOM_V2','Miller','Grace','555-0202','CHILD_V2','Miller','Tom','M','2021-06-20','0.65','65'], # S4
-        ['MOM_V3','Davis','Kate','555-0203','CHILD_V3','Davis','Harry','M','2021-07-01','0.02','2'], # S6
-    ]
+    data = [['mother_MRN','mother_last','mother_first','mother_phone','offspring_MRN','offspring_last','offspring_first','offspring_sex','offspring_DOB','model_score','model_pctile']]
+    
+    # Generate 50 candidates
+    for i in range(50):
+        pctile = random.uniform(0, 100)
+        data.append([
+            f'MOM_V{i}', 'Taylor', 'Rose', '555-0201', 
+            f'CHILD_V{i}', 'Taylor', 'Sam', 'M', 
+            '2021-02-02', str(pctile/100), str(pctile)
+        ])
+
     with open('vumc_master_list.csv', 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerows(data)
 
 create_mgb_toy()
 create_vumc_toy()
-print("Created toy data files.")
+print("Created toy data files with ~150 candidates.")

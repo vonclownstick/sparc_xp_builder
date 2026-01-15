@@ -166,9 +166,15 @@ def main():
         required_fields = ['date_added', 'status', 'current_age', 'eligible', 'stratum', 
                            'contact_stage', 'last_contact_date', 'rand_num', 
                            'integrity_hash', 'verification_MRN', 'site',
-                           'multiple_offspring', 'prev_maternal_enrollment']
+                           'multiple_offspring', 'prev_maternal_enrollment',
+                           'letter1_date', 'letter2_date']
         for f in required_fields:
             if f not in fieldnames: fieldnames.append(f)
+        
+        # Ensure all rows have the required keys
+        for row in final_rows:
+            for f in required_fields:
+                if f not in row: row[f] = ''
             
         with open(master_list_path, 'w', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

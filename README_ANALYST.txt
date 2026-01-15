@@ -85,3 +85,11 @@ Edit `CONSTANTS.txt` to adjust:
 *   S4 (Mid-High): 50.0 < P <= 80.0
 *   S5 (Low-Mid):  10.0 < P <= 50.0
 *   S6 (Bottom 10%): P <= 10.0
+
+**Recruitment File Management:**
+When editing the recruitment file to create a `prior_list`, you can use the following columns:
+*   `status`: Updates the participant's status.
+    *   Valid values: 'Pending', 'Completed', 'Refused', 'No Response', 'invite 1 sent', 'invite 2 sent'.
+    *   Participants with 3 letters sent should generally be marked as 'Refused' or 'No Response' to prevent further contact.
+*   `letter1_date`: Date the first letter was sent (YYYY-MM-DD).
+*   `letter2_date`: Date the second letter was sent (YYYY-MM-DD).

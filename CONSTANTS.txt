@@ -16,4 +16,4 @@ OUTPUT_DIR=study_data/outputs
 BACKUP_DIR=study_data/backups
 LOG_DIR=study_data/logs
 START_DATE=2026-01-08
-LAST_UPDATE=2026-01-08
+LAST_UPDATE=2026-01-15
