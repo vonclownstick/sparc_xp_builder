@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import hashlib
+import argparse
 from datetime import datetime
 
 def get_constants():
@@ -68,12 +69,88 @@ def update_maternal_flags(rows):
         ) else 'No'
     return rows
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: python update_master.py <input_file.csv>")
-        return
+def trim_by_stratum(rows, target_n, constants):
+    """Downsample rows to target_n using configured stratum weights."""
+    # Only consider eligible rows for trimming
+    eligible_rows = [r for r in rows if r.get('eligible') == '1']
+    ineligible_rows = [r for r in rows if r.get('eligible') != '1']
 
-    input_file = sys.argv[1]
+    if len(eligible_rows) <= target_n:
+        print(f"Note: Only {len(eligible_rows)} eligible rows available, no trimming needed.")
+        return rows
+
+    # Get configured weights from CONSTANTS
+    strata = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6']
+    weights = {s: constants.get(f'{s}_WEIGHT', 0.1) for s in strata}
+
+    # Normalize weights to sum to 1.0
+    total_weight = sum(weights.values())
+    weights = {s: w / total_weight for s, w in weights.items()}
+
+    # Count available rows per stratum
+    strata_available = {}
+    for r in eligible_rows:
+        s = r.get('stratum', 'S6')
+        strata_available[s] = strata_available.get(s, 0) + 1
+
+    # Calculate target counts per stratum using configured weights
+    strata_targets = {s: weights[s] * target_n for s in strata}
+
+    # Use largest remainder method for integer allocation
+    floor_targets = {s: int(v) for s, v in strata_targets.items()}
+    remainder = target_n - sum(floor_targets.values())
+    fractional_parts = {s: v - int(v) for s, v in strata_targets.items()}
+    sorted_strata = sorted(fractional_parts.keys(), key=lambda k: fractional_parts[k], reverse=True)
+    for i in range(remainder):
+        floor_targets[sorted_strata[i]] += 1
+
+    # Sample from each stratum (cap at available if needed)
+    sampled_rows = []
+    actual_total = 0
+    shortfall = 0
+    for s in strata:
+        s_rows = [r for r in eligible_rows if r.get('stratum') == s]
+        s_target = floor_targets.get(s, 0)
+        available = len(s_rows)
+
+        if available < s_target:
+            # Not enough in this stratum - take all available
+            sampled_rows.extend(s_rows)
+            actual_total += available
+            shortfall += s_target - available
+        else:
+            sampled_rows.extend(random.sample(s_rows, s_target))
+            actual_total += s_target
+
+    # If there was a shortfall, try to fill from other strata proportionally
+    if shortfall > 0:
+        remaining_eligible = [r for r in eligible_rows if r not in sampled_rows]
+        if remaining_eligible:
+            fill_count = min(shortfall, len(remaining_eligible))
+            sampled_rows.extend(random.sample(remaining_eligible, fill_count))
+            print(f"  Note: {shortfall} shortfall in target strata, filled {fill_count} from others")
+
+    print(f"Trimmed from {len(eligible_rows)} to {len(sampled_rows)} eligible rows (target: {target_n})")
+    print(f"Target weights from CONSTANTS.txt:")
+    for s in strata:
+        orig = strata_available.get(s, 0)
+        final = len([r for r in sampled_rows if r.get('stratum') == s])
+        target_pct = weights[s] * 100
+        actual_pct = final / len(sampled_rows) * 100 if sampled_rows else 0
+        print(f"  {s}: {orig} -> {final} (target: {target_pct:.0f}%, actual: {actual_pct:.1f}%)")
+
+    # Return sampled eligible + all ineligible (ineligible are kept for record but excluded from recruitment)
+    return sampled_rows + ineligible_rows
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Update master list from raw site data")
+    parser.add_argument("input_file", help="Input CSV file (must start with 'mgb_' or 'vumc_')")
+    parser.add_argument("--trim", type=int, metavar="N",
+                        help="After excluding ineligible, downsample to N rows while maintaining stratum distribution")
+    args = parser.parse_args()
+
+    input_file = args.input_file
     filename = os.path.basename(input_file)
     
     if filename.startswith('mgb_'):
@@ -158,7 +235,13 @@ def main():
                 removed_count += 1
 
     final_rows = update_maternal_flags(final_rows)
-    
+
+    # Apply trim if requested
+    if args.trim:
+        final_rows = trim_by_stratum(final_rows, args.trim, C)
+        # Re-run maternal flags after trimming since some mothers may have lost offspring
+        final_rows = update_maternal_flags(final_rows)
+
     # Fieldnames
     if final_rows:
         fieldnames = list(final_rows[0].keys())

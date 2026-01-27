@@ -1,9 +1,17 @@
+# Stratum weights for recruitment allocation
 S1_WEIGHT=0.4
 S2_WEIGHT=0.16
 S3_WEIGHT=0.12
 S4_WEIGHT=0.13
 S5_WEIGHT=0.09
 S6_WEIGHT=0.1
+# Default yields per stratum (used when no historical data available)
+S1_YIELD=0.2
+S2_YIELD=0.2
+S3_YIELD=0.2
+S4_YIELD=0.2
+S5_YIELD=0.2
+S6_YIELD=0.2
 MGB_RATIO=0.6667
 VUMC_RATIO=0.3333
 AGE_MIN=4.0
@@ -16,4 +24,4 @@ OUTPUT_DIR=study_data/outputs
 BACKUP_DIR=study_data/backups
 LOG_DIR=study_data/logs
 START_DATE=2026-01-08
-LAST_UPDATE=2026-01-15
+LAST_UPDATE=2026-01-27

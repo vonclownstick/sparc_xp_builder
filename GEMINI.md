@@ -16,6 +16,8 @@ The system consists of three main operational scripts and a configuration file:
     *   Deduplicates offspring by MRN.
     *   Flags maternal relationships (multiple offspring, previous enrollments).
     *   Maintains `date_added` and `integrity_hash` for data safety.
+*   **Options:**
+    *   `--trim N`: After excluding age-ineligible participants, randomly downsample to N rows while maintaining the proportional distribution across strata.
 
 ### 2. Recruitment List Generation (`update_recruitment.py`)
 *   **Purpose:** The core operational script to generate monthly outreach lists.
@@ -26,6 +28,8 @@ The system consists of three main operational scripts and a configuration file:
     *   **Site Allocation:** Distributes invites between MGB (approx. 2/3) and VUMC (approx. 1/3) according to constants.
     *   **Stratified Random Sampling:** Selects new participants randomly within each stratum to meet targets.
     *   **Safety:** Automatically creates validated backups in a `backups/` directory.
+*   **Options:**
+    *   `--allow-single-site`: By default, the script requires both MGB and VUMC master lists to be present. Use this flag to allow running with only one site's data available (all invites will go to that site).
 
 ### 3. Reporting (`consort.py`)
 *   **Purpose:** Generates a historical summary of recruitment batches.
@@ -38,6 +42,10 @@ The system consists of three main operational scripts and a configuration file:
     *   Site ratios (`MGB_RATIO`, `VUMC_RATIO`)
     *   Age eligibility limits (`AGE_MIN`, `AGE_MAX`)
     *   Follow-up intervals (`FOLLOWUP_X_DAYS`)
+    *   **Yield defaults** (`S1_YIELD` to `S6_YIELD`): Default yield values used when no historical data exists
+        *   Calculated yields from historical data take precedence when available
+        *   Site-specific defaults supported: `MGB_S1_YIELD=0.15`, `VUMC_S1_YIELD=0.08`, etc.
+        *   Priority: calculated from history > site-specific default > generic default > 0.1
 
 ## Usage Guide
 
@@ -46,12 +54,18 @@ Place raw data in the root or `study_data/inputs/`.
 ```bash
 python3 update_master.py mgb_data_20260108.csv
 python3 update_master.py vumc_data_20260108.csv
+
+# Optionally trim to a specific size while maintaining stratum proportions:
+python3 update_master.py mgb_data_20260108.csv --trim 1000
 ```
 
 ### 2. Generate Recruitment Batch
 Specify the target number of completed visits.
 ```bash
 python3 update_recruitment.py --visits 40 --prior_list study_data/outputs/recruitment_previous.csv
+
+# Run with only one site's data available:
+python3 update_recruitment.py --visits 40 --allow-single-site
 ```
 
 ### 3. View Report
