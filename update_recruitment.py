@@ -197,19 +197,42 @@ def main():
         for i in range(remainder):
             floor_targets[sorted_strata[i]] += 1
             
-        # Select participants
-        for s in strata:
-            s_target = floor_targets[s]
-            log_messages.append(f"  {s}: Yield={yields[s]:.2f}, Target Invites={s_target}")
-            
+        # Select participants with cascade logic for shortfalls
+        # AIDEV-NOTE: If a stratum can't meet its target, the shortfall cascades to the next stratum
+        carryover = 0  # Shortfall from previous strata
+        site_selected_count = 0  # Track selections for this site
+
+        for idx, s in enumerate(strata):
+            original_target = floor_targets[s]
+            s_target = original_target + carryover  # Add any carryover from previous strata
+
             eligible_rows = [r for r in rows if r['stratum'] == s and r['status'] == 'Not Invited' and r['eligible'] == '1']
-            
+            available = len(eligible_rows)
+
+            # Log the target info
+            if carryover > 0:
+                log_messages.append(f"  {s}: Yield={yields[s]:.2f}, Base Target={original_target}, +Cascade={carryover}, Total Target={s_target}, Available={available}")
+            else:
+                log_messages.append(f"  {s}: Yield={yields[s]:.2f}, Target Invites={s_target}, Available={available}")
+
             selected = []
-            if len(eligible_rows) <= s_target:
+            if available <= s_target:
+                # Take all available, calculate new shortfall
                 selected = eligible_rows
+                shortfall = s_target - available
+                if shortfall > 0 and idx < len(strata) - 1:
+                    next_stratum = strata[idx + 1]
+                    log_messages.append(f"    WARNING: Ran out of {s}, shifting {shortfall} to {next_stratum}")
+                    carryover = shortfall
+                elif shortfall > 0:
+                    log_messages.append(f"    WARNING: Ran out of {s}, {shortfall} unfilled (no more strata)")
+                    carryover = 0
+                else:
+                    carryover = 0
             else:
                 selected = random.sample(eligible_rows, s_target)
-            
+                carryover = 0  # Met target, no carryover
+
             for r in selected:
                 r['status'] = 'Pending'
                 r['last_contact_date'] = datetime.now().strftime('%Y-%m-%d')
@@ -217,8 +240,20 @@ def main():
                 r['letter1_date'] = '' # Initialize blank
                 r['letter2_date'] = '' # Initialize blank
                 new_selections.append(r)
-            
+
+            site_selected_count += len(selected)
             log_messages.append(f"    Added: {len(selected)}")
+
+        # Final summary for this site
+        unfilled = site_new_needed - site_selected_count
+        log_messages.append(f"  SITE SUMMARY: Target={site_new_needed}, Selected={site_selected_count}, Unfilled={unfilled}")
+
+    # Grand total summary
+    total_selected = len(new_selections)
+    total_unfilled = total_needed - total_selected
+    log_messages.append(f"\n=== GRAND TOTAL: Target={total_needed}, Selected={total_selected}, Unfilled={total_unfilled} ===")
+    if total_unfilled > 0:
+        log_messages.append(f"WARNING: Could not fill {total_unfilled} slots - insufficient eligible participants across all strata")
 
     # Update Master Lists with new Pending status
     if mgb_rows:
