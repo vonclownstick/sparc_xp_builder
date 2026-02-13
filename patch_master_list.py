@@ -136,12 +136,14 @@ def main():
             shutil.copy(output_path, backup_path)
             print(f"Backed up existing {output_filename} to {backup_path}")
 
+        # Remove recruitment-specific fields from rows
+        recruitment_specific_fields = ['date_added_to_recruitment']
+        for row in site_rows:
+            for field in recruitment_specific_fields:
+                row.pop(field, None)  # Remove if present
+
         # Prepare fieldnames (ensure model_score and model_pctile are included)
         fieldnames = list(site_rows[0].keys())
-
-        # Remove 'date_added_to_recruitment' if present (recruitment-specific field)
-        if 'date_added_to_recruitment' in fieldnames:
-            fieldnames.remove('date_added_to_recruitment')
 
         # Ensure model_score, model_pctile, and stratum are present
         if 'model_score' not in fieldnames:
