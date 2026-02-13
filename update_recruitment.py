@@ -264,9 +264,13 @@ def main():
     random.shuffle(new_selections)
     final_list = new_selections 
 
-    # Output CSV
+    # Output CSV (blinded - excludes stratum and diagnosis fields)
     if final_list:
-        fieldnames = [f for f in final_list[0].keys() if f not in ['model_score', 'model_pctile']]
+        # AIDEV-NOTE: Recruitment list is blinded - excludes model_score, model_pctile, stratum, and diagnosis fields
+        # The sampling still uses stratification internally, but the output list doesn't reveal stratum assignment
+        blinded_fields = ['model_score', 'model_pctile', 'stratum']
+        fieldnames = [f for f in final_list[0].keys()
+                      if f not in blinded_fields and 'diagnosis' not in f.lower()]
         # Ensure new columns are in output
         for f in ['date_added_to_recruitment', 'letter1_date', 'letter2_date']:
             if f not in fieldnames: fieldnames.append(f)
