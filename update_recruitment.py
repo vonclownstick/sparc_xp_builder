@@ -64,6 +64,8 @@ def main():
     parser.add_argument("--prior_list", type=str)
     parser.add_argument("--allow-single-site", action="store_true",
                         help="Allow running with only one site's master file present")
+    parser.add_argument("--yield", type=float, dest="fixed_yield", default=None,
+                        help="Override all yield calculations with a fixed value (e.g. --yield 0.05)")
     args = parser.parse_args()
 
     C = get_constants()
@@ -177,7 +179,11 @@ def main():
         log_messages.append(f"\nSite: {site} (Target New: {site_new_needed})")
 
         # Calculate yield per stratum (uses site-specific overrides from CONSTANTS if available)
-        yields = {s: get_yield(rows, s, site=site, constants=C) for s in strata}
+        if args.fixed_yield is not None:
+            yields = {s: args.fixed_yield for s in strata}
+            log_messages.append(f"  NOTE: Using fixed yield override: {args.fixed_yield}")
+        else:
+            yields = {s: get_yield(rows, s, site=site, constants=C) for s in strata}
         
         # Adjust weights based on yield: W_s' = W_s / Yield_s
         adjusted_weights = {s: weights[s] / yields[s] for s in strata}
