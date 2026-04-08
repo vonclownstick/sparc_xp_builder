@@ -250,7 +250,7 @@ def main():
                            'contact_stage', 'last_contact_date', 'rand_num', 
                            'integrity_hash', 'verification_MRN', 'site',
                            'multiple_offspring', 'prev_maternal_enrollment',
-                           'letter1_date', 'letter2_date']
+                           'letter1_date', 'letter2_date', 'letter3_date']
         for f in required_fields:
             if f not in fieldnames: fieldnames.append(f)
         

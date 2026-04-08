@@ -50,17 +50,44 @@ STEP 2: GENERATE RECRUITMENT LIST
 
 **Arguments:**
 *   `--visits <N>`: (Required) Total number of *fresh invites* to generate for this batch.
-*   `--prior_list <file>`: (Recommended) The previous month's recruitment CSV. Used to update participant statuses (e.g., to 'Completed' or 'Refused') in the master database, which ensures accurate yield calculations for the new batch.
+*   `--prior_list <file>`: (Recommended) The previous month's recruitment CSV, after the
+    research team has updated it. The script uses this to advance the contact pipeline and
+    update the master database.
+*   `--weights S1,S2,...,S6`: (Optional) Override stratum weights for this run only.
+    Does NOT modify CONSTANTS.txt. Example: `--weights 0.55,0.20,0.00,0.10,0.07,0.08`
+*   `--allow-single-site`: Allow running with only one site's master file present.
+*   `--yield <VALUE>`: Override all yield calculations with a fixed value.
 
 **Action:**
 1.  Locate last month's recruitment file (e.g., `recruitment_20260101.csv`).
-    *   *Important:* Ensure you have marked participants as 'Completed', 'Refused', etc., in this file before running.
-2.  Run: `python3 update_recruitment.py --visits 40 --prior_list study_data/outputs/recruitment_20260101.csv`
+2.  Update the `status` column for any participant who responded:
+    *   Set to `Consented` if they agreed to enroll.
+    *   Set to `Refused` if they explicitly declined.
+    *   Leave as `Pending` if there was no response (the script will automatically
+        advance them to the next contact stage).
+    *   That's it -- `status` is the ONLY column you need to edit. Everything else
+        (contact_stage, letter dates, stage advancement) is managed by the script.
+    *   (Optional: you may correct `letter1_date`/`letter2_date`/`letter3_date` if the
+        actual mail date differed from what the script recorded.)
+3.  Run: `python3 update_recruitment.py --visits 40 --prior_list study_data/outputs/recruitment_20260101.csv`
 
 **Result:**
-*   Generates `study_data/outputs/recruitment_YYYYMMDD.csv` containing ONLY NEW invitees.
-*   Updates the Master List statuses.
-*   Logs Stratum-specific yield adjustments to console and `study_data/logs/`.
+*   Generates `study_data/outputs/recruitment_YYYYMMDD.csv` containing:
+    *   Holdover participants still in the contact pipeline (stages 2 and 3), AND
+    *   Newly selected invitees (stage 1).
+    *   The `contact_stage` column tells you which letter to send (1, 2, or 3).
+*   Updates the Master List statuses, including marking participants who exhausted all
+    3 contacts without responding as `No Response - 3 Letters`.
+*   Logs contact stage transitions and stratum-specific yield adjustments to console
+    and `study_data/logs/`.
+
+**Contact Stage Lifecycle:**
+    Stage -1  -->  Stage 1  -->  Stage 2  -->  Stage 3  -->  Removed
+    (master)      (letter 1)    (letter 2)    (letter 3)    (No Response - 3 Letters)
+
+*   Stage 1 -> 2: Automatic on next run if still Pending.
+*   Stage 2 -> 3: Automatic on next run if >28 days since letter 2 and still Pending.
+*   Stage 3 -> Removed: Automatic on next run if still Pending. Master list updated.
 
 -------------------------------------------------------------------------------
 STEP 3: REPORTING
@@ -87,9 +114,16 @@ Edit `CONSTANTS.txt` to adjust:
 *   S6 (Bottom 10%): P <= 10.0
 
 **Recruitment File Management:**
-When editing the recruitment file to create a `prior_list`, you can use the following columns:
-*   `status`: Updates the participant's status.
-    *   Valid values: 'Pending', 'Completed', 'Refused', 'No Response', 'invite 1 sent', 'invite 2 sent'.
-    *   Participants with 3 letters sent should generally be marked as 'Refused' or 'No Response' to prevent further contact.
-*   `letter1_date`: Date the first letter was sent (YYYY-MM-DD).
-*   `letter2_date`: Date the second letter was sent (YYYY-MM-DD).
+When editing the recruitment file to create a `prior_list`:
+
+*   `status` (THE ONLY COLUMN YOU NEED TO EDIT):
+    *   `Consented` - Participant agreed to enroll. Stops further contact.
+    *   `Refused` - Participant explicitly declined. Stops further contact.
+    *   `Pending` - No response. Leave as-is; the script advances them automatically.
+
+*   `letter1_date`, `letter2_date`, `letter3_date` (optional corrections):
+    *   Only edit these if the actual mail date differs from the script-generated date.
+    *   Format: YYYY-MM-DD.
+
+*   `contact_stage` (DO NOT EDIT):
+    *   Managed automatically by the script. Indicates which letter to send (1, 2, or 3).

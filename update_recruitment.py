@@ -66,7 +66,26 @@ def main():
                         help="Allow running with only one site's master file present")
     parser.add_argument("--yield", type=float, dest="fixed_yield", default=None,
                         help="Override all yield calculations with a fixed value (e.g. --yield 0.05)")
+    parser.add_argument("--weights", type=str, default=None,
+                        help="Override stratum weights S1-S6 as comma-separated values (e.g. --weights 0.55,0.20,0.00,0.10,0.07,0.08)")
     args = parser.parse_args()
+
+    # Parse and validate weight overrides
+    weight_overrides = None
+    if args.weights:
+        parts = args.weights.split(',')
+        if len(parts) != 6:
+            print("Error: --weights requires exactly 6 comma-separated values (S1 through S6).")
+            return
+        try:
+            weight_overrides = {f'S{i+1}': float(parts[i]) for i in range(6)}
+        except ValueError:
+            print("Error: --weights values must be numeric.")
+            return
+        total = sum(weight_overrides.values())
+        if abs(total - 1.0) > 0.01:
+            print(f"Warning: weights sum to {total:.4f}, normalizing to 1.0")
+            weight_overrides = {s: w / total for s, w in weight_overrides.items()}
 
     C = get_constants()
     output_dir = C.get('OUTPUT_DIR', 'study_data/outputs')
@@ -102,7 +121,14 @@ def main():
         with open(vumc_path, 'r') as f:
             vumc_rows = list(csv.DictReader(f))
 
-    # Handle Prior List
+    # Handle Prior List and Contact Stage Advancement
+    # AIDEV-NOTE: Stage progression: -1 (never contacted) → 1 (initial letter) → 2 (follow-up) → 3 (final letter) → removed
+    holdovers = []  # Participants continuing from prior list
+    advanced_to_2 = 0
+    advanced_to_3 = 0
+    held_at_2 = 0
+    removed_stage3 = 0
+
     if not args.prior_list:
         ans = input("There is no prior list provided, do you want to proceed? [Y/N]: ")
         if ans.lower() != 'y':
@@ -127,11 +153,66 @@ def main():
                             r['letter1_date'] = p_row['letter1_date']
                         if 'letter2_date' in p_row:
                             r['letter2_date'] = p_row['letter2_date']
+                        if 'letter3_date' in p_row:
+                            r['letter3_date'] = p_row['letter3_date']
 
             update_rows(mgb_rows, prior_map)
             update_rows(vumc_rows, prior_map)
 
-            # Save updated master lists
+            # Advance contact stages for prior list participants
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            RESOLVED_STATUSES = {'Completed', 'Consented', 'Refused'}
+
+            for r in mgb_rows + vumc_rows:
+                mrn = r['offspring_MRN']
+                if mrn not in prior_map:
+                    continue
+
+                status = r.get('status', 'Pending')
+                if status in RESOLVED_STATUSES:
+                    continue
+
+                stage = int(r.get('contact_stage', '-1'))
+
+                if stage == 3:
+                    # Exhausted all 3 contacts — mark in master list and remove from recruitment
+                    r['status'] = 'No Response - 3 Letters'
+                    removed_stage3 += 1
+                    continue
+
+                if stage == 2:
+                    letter2 = r.get('letter2_date', '')
+                    if letter2:
+                        days_since = (datetime.now() - datetime.strptime(letter2, '%Y-%m-%d')).days
+                        if days_since > 28:
+                            r['contact_stage'] = '3'
+                            r['letter3_date'] = today_str
+                            r['last_contact_date'] = today_str
+                            holdovers.append(r)
+                            advanced_to_3 += 1
+                        else:
+                            # Not yet 28 days since letter 2 — keep at stage 2
+                            holdovers.append(r)
+                            held_at_2 += 1
+                    else:
+                        holdovers.append(r)
+                        held_at_2 += 1
+                    continue
+
+                if stage == 1:
+                    # Advance to stage 2 — send follow-up letter
+                    r['contact_stage'] = '2'
+                    r['letter2_date'] = today_str
+                    r['last_contact_date'] = today_str
+                    holdovers.append(r)
+                    advanced_to_2 += 1
+                    continue
+
+            print(f"Contact stage updates: {advanced_to_2} → stage 2, "
+                  f"{advanced_to_3} → stage 3, {held_at_2} held at stage 2, "
+                  f"{removed_stage3} removed (no response after 3 letters)")
+
+            # Save updated master lists (with stage advancement)
             if mgb_rows:
                 save_csv(mgb_rows, list(mgb_rows[0].keys()), mgb_path)
             if vumc_rows:
@@ -140,9 +221,10 @@ def main():
             print(f"Error: Prior list {args.prior_list} not found.")
             return
 
-    # NOTE: We do NOT carry over holdovers. 
     total_needed = args.visits
     print(f"Total target (Fresh Invites): {total_needed}")
+    if holdovers:
+        print(f"Continuing contacts from prior list: {len(holdovers)}")
 
     # Determine site split (MGB vs VUMC) with exact rounding
     mgb_ratio = C.get('MGB_RATIO', 0.6667)
@@ -166,10 +248,21 @@ def main():
 
     new_selections = []
     strata = [f'S{i}' for i in range(1, 7)] # S1 to S6
-    weights = {s: C.get(f'{s}_WEIGHT', 0.1) for s in strata}
+    if weight_overrides:
+        weights = weight_overrides
+        print(f"Using weight overrides: {', '.join(f'{s}={w:.2f}' for s, w in weights.items())}")
+    else:
+        weights = {s: C.get(f'{s}_WEIGHT', 0.1) for s in strata}
 
     log_messages = []
     log_messages.append(f"Recruitment Update - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if weight_overrides:
+        log_messages.append(f"  NOTE: Using weight overrides: {', '.join(f'{s}={w:.2f}' for s, w in weight_overrides.items())}")
+    if holdovers or removed_stage3:
+        log_messages.append(f"  Contact stages: {advanced_to_2} → stage 2, {advanced_to_3} → stage 3, "
+                            f"{held_at_2} held at stage 2, {removed_stage3} removed (no response)")
+    if holdovers:
+        log_messages.append(f"  Holdovers on output list: {len(holdovers)}")
 
     for config in site_configs:
         site = config['site']
@@ -241,10 +334,12 @@ def main():
 
             for r in selected:
                 r['status'] = 'Pending'
+                r['contact_stage'] = '1'
                 r['last_contact_date'] = datetime.now().strftime('%Y-%m-%d')
                 r['date_added_to_recruitment'] = datetime.now().strftime('%Y-%m-%d')
-                r['letter1_date'] = '' # Initialize blank
-                r['letter2_date'] = '' # Initialize blank
+                r['letter1_date'] = datetime.now().strftime('%Y-%m-%d')
+                r['letter2_date'] = ''
+                r['letter3_date'] = ''
                 new_selections.append(r)
 
             site_selected_count += len(selected)
@@ -268,7 +363,7 @@ def main():
         save_csv(vumc_rows, list(vumc_rows[0].keys()), vumc_path)
 
     random.shuffle(new_selections)
-    final_list = new_selections 
+    final_list = holdovers + new_selections
 
     # Output CSV (blinded - excludes stratum and diagnosis fields)
     if final_list:
@@ -278,7 +373,7 @@ def main():
         fieldnames = [f for f in final_list[0].keys()
                       if f not in blinded_fields and 'diagnosis' not in f.lower()]
         # Ensure new columns are in output
-        for f in ['date_added_to_recruitment', 'letter1_date', 'letter2_date']:
+        for f in ['date_added_to_recruitment', 'letter1_date', 'letter2_date', 'letter3_date', 'contact_stage']:
             if f not in fieldnames: fieldnames.append(f)
         
         today_ts = datetime.now().strftime('%Y%m%d')
