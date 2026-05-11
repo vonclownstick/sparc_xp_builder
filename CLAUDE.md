@@ -30,21 +30,27 @@ The system consists of three main operational scripts and a configuration file:
     *   **Stratified Random Sampling:** Selects new participants randomly within each stratum to meet targets.
     *   **Safety:** Automatically creates validated backups in a `backups/` directory.
 *   **Options:**
+    *   `--visits N`: Number of fresh letter-1 invites to generate (optional; at least one of `--visits` or `--catchup_list2` must be given).
+    *   `--catchup_list2 N`: Generate a separate stratified batch of N letter-2 mailings drawn from master rows at `contact_stage=1`, status `Pending`, with `letter1_date` stamped, that are NOT on the prior list. Output goes to `study_data/outputs/catchup_letter2_YYYYMMDD.csv`. May be combined with `--visits` (interactive confirm).
     *   `--allow-single-site`: By default, the script requires both MGB and VUMC master lists to be present. Use this flag to allow running with only one site's data available (all invites will go to that site).
     *   `--weights S1,S2,S3,S4,S5,S6`: Override stratum weights for this run only (e.g., `--weights 0.55,0.20,0.00,0.10,0.07,0.08`). Does not modify CONSTANTS.txt.
     *   `--yield VALUE`: Override all yield calculations with a fixed value (e.g., `--yield 0.05`).
 
 #### Contact Stage Lifecycle
 
-Each participant progresses through a 3-letter outreach sequence, managed automatically by the script:
+Each participant progresses through a 3-letter outreach sequence:
 
 | Stage | Trigger | Action |
 |-------|---------|--------|
 | **-1** (default) | Participant is in master list but never selected | No contact |
 | **1** | Selected for a new recruitment batch | `letter1_date` set, initial letter sent |
-| **2** | Next run, participant still Pending | `letter2_date` set, follow-up letter sent |
-| **3** | Next run, >28 days since letter 2, still Pending | `letter3_date` set, final letter sent |
+| **2** | Next run, participant still Pending AND `letter1_date` is stamped | `letter2_date` set, follow-up letter sent |
+| **3** | Next run, >28 days since letter 2, still Pending AND `letter2_date` is stamped | `letter3_date` set, final letter sent |
 | **Removed** | Next run, stage 3 participant still Pending | Status set to `No Response - 3 Letters` in master list, removed from active recruitment |
+
+**Stage-advance guard:** A participant is only advanced to the next stage if the *previous* letter date is non-empty in the master list. Stage 1 → 2 requires `letter1_date` set; stage 2 → 3 requires `letter2_date` set. People at stage 1 with no `letter1_date` stay put until picked up by `--catchup_list2`.
+
+**Deferred state changes:** Stage advancement and letter-date stamping are applied only AFTER the output lists are built. If a row is ever dropped from the output, the master is not falsely marked as having mailed that letter.
 
 Participants marked as `Consented`, `Completed`, or `Refused` at any stage are removed from the pipeline and not advanced further.
 
@@ -97,6 +103,12 @@ python3 update_recruitment.py --visits 40 --allow-single-site
 
 # Override stratum weights for a catch-up run (does not modify CONSTANTS.txt):
 python3 update_recruitment.py --visits 40 --weights 0.55,0.20,0.00,0.10,0.07,0.08
+
+# Send 200 letter-2 catchups (stage-1 people with letter1_date set, not on prior list):
+python3 update_recruitment.py --catchup_list2 200 --prior_list study_data/outputs/recruitment_previous.csv
+
+# Combined run — fresh letter-1 batch plus a letter-2 catchup batch (interactive confirm):
+python3 update_recruitment.py --visits 40 --catchup_list2 200 --prior_list study_data/outputs/recruitment_previous.csv
 ```
 
 ### 3. View Report
